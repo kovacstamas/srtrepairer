@@ -70,7 +70,16 @@ public class SrtRepairer {
 				if (trackNo > -1) {
 					String[] extractCommand = {"mkvextract", "tracks", fileName, trackNo + ":" + srtName};
 					p = Runtime.getRuntime().exec(extractCommand);
+					reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+					String line = null;
+					String oldLine = null;
+					while ((line = reader.readLine()) != null)
+						if (!line.equals(oldLine) && isTenPercentFinished(line)) {
+							System.out.print("*");
+							oldLine = line;
+						}
 					p.waitFor();
+					System.out.println();
 					System.out.println(srtName + " has been created.");
 				} else {
 					System.out.println("No subtitle track found in the mkv file");;
@@ -86,6 +95,16 @@ public class SrtRepairer {
 				processFile(file);	
 			}
 		}
+	}
+	
+	private boolean isTenPercentFinished(String line) {
+		int finished = 0;
+		try {
+			finished = Integer.parseInt(line.substring(10, 12));
+		} catch (Exception e) {
+			finished = 0;
+		}
+		return (finished % 10 == 0) && finished > 0 ;
 	}
 	
 	private int getTrackNumberFromOutput(BufferedReader reader) throws IOException{
