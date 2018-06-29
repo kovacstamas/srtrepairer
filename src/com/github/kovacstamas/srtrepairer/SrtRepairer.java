@@ -12,83 +12,92 @@ import java.util.List;
 
 public class SrtRepairer {
 	private File dir;
-	
-	public SrtRepairer(File dir) {
+	private boolean overwriteOld;
+
+	public SrtRepairer(File dir, boolean overwriteOld) {
 		this.dir = dir;
+		this.overwriteOld = overwriteOld;
 	}
-	
+
 	public static void main(String[] args) {
-		if (args.length < 1) {
-			System.out.println("You have to use at least one parameter.");
+		if (args.length < 2) {
+			System.out.println("You have to use at least two parameters. (dir and overwriteOld)");
 		} else {
-		    try {
-		    	File dir = new File(args[0]);
-		    	if (dir.isDirectory()) {
-			    	SrtRepairer inst = new SrtRepairer(dir);
-			    	inst.start();	
-		    	} else {
-		    		System.out.println("The parameter must be the directory containing the mkv files.");
-		    	}
-		    }catch (Exception e) {
-		        e.printStackTrace();
-		    }
+			try {
+				File dir = new File(args[0]);
+				boolean overwriteOld = Boolean.parseBoolean(args[1]);
+				if (dir.isDirectory()) {
+					SrtRepairer inst = new SrtRepairer(dir, overwriteOld);
+					inst.start();	
+				} else {
+					System.out.println("The parameter must be the directory containing the mkv files.");
+				}
+			}catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 	}
-	
+
 	private void start() throws Exception {
 		System.out.println("Starting to process " + dir.getAbsolutePath());
 		createSrts(dir);
-		System.out.println("Finished with every mkv file.");
+		System.out.println("Finished with every mkv file in " + dir.getAbsolutePath() + ".");
 		processSrts(dir);
-		System.out.println("SrtRepairer finished");
+		System.out.println("SrtRepairer finished in " + dir.getAbsolutePath() + ".");
 	}
-	
+
 	private void createSrts(File dir) throws Exception {
 		for (final File file : dir.listFiles()) {
 			String fileName = file.getAbsolutePath();
 			if (file.isDirectory()) {
 				System.out.println("File " + file  + " is a directory, Recursion!.");
-				SrtRepairer rec = new SrtRepairer(file);
+				SrtRepairer rec = new SrtRepairer(file, overwriteOld);
 				rec.start();
 			} else if (fileName.endsWith("mkv")) {
-				String[] infoCommand = {"mkvinfo",  fileName};
-				Process p;
-				p = Runtime.getRuntime().exec(infoCommand);
-				p.waitFor();
-				BufferedReader reader = 
-                        new BufferedReader(new InputStreamReader(p.getInputStream()));
-				
-				int trackNo = getTrackNumberFromOutput(reader);
-				System.out.println(file.getName() + " subtitle track number: " + trackNo);
-				
 				String srtName = fileName.substring(0, fileName.length()-4) + ".srt";
 				File srtFile = new File(srtName);
-				if (srtFile.exists()) {
-					srtFile.delete();
-					System.out.println(srtName + " deleted.");
-				}
-				if (trackNo > -1) {
-					String[] extractCommand = {"mkvextract", "tracks", fileName, trackNo + ":" + srtName};
-					p = Runtime.getRuntime().exec(extractCommand);
-					reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-					String line = null;
-					String oldLine = null;
-					while ((line = reader.readLine()) != null)
-						if (!line.equals(oldLine) && isTenPercentFinished(line)) {
-							System.out.print("*");
-							oldLine = line;
-						}
+
+				if ((srtFile.exists() && overwriteOld) || !srtFile.exists()) {
+					if (srtFile.exists()) {
+						srtFile.delete();
+						System.out.println(srtName + " deleted.");
+					}
+
+					String[] infoCommand = {"mkvinfo",  fileName};
+					Process p;
+					p = Runtime.getRuntime().exec(infoCommand);
 					p.waitFor();
-					System.out.println();
-					System.out.println(srtName + " has been created.");
+					BufferedReader reader = 
+							new BufferedReader(new InputStreamReader(p.getInputStream()));
+
+					int trackNo = getTrackNumberFromOutput(reader);
+					System.out.println(file.getName() + " subtitle track number: " + trackNo);
+
+					if (trackNo > -1) {
+						String[] extractCommand = {"mkvextract", "tracks", fileName, trackNo + ":" + srtName};
+						p = Runtime.getRuntime().exec(extractCommand);
+						reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+						String line = null;
+						String oldLine = null;
+						while ((line = reader.readLine()) != null)
+							if (!line.equals(oldLine) && isTenPercentFinished(line)) {
+								System.out.print("*");
+								oldLine = line;
+							}
+						p.waitFor();
+						System.out.println();
+						System.out.println(srtName + " has been created.");
+					} else {
+						System.out.println("No subtitle track found in the mkv file");;
+					}
 				} else {
-					System.out.println("No subtitle track found in the mkv file");;
+					System.out.println("The app is in NOT_TO_OVERWRITE mode and " + srtFile.getAbsolutePath() + " is already exists");					
 				}
 
 			}
 		}
 	}
-	
+
 	private void processSrts(File dir) throws IOException{
 		for (final File file : dir.listFiles()) {
 			if (!file.isDirectory() && file.getName().endsWith("srt")) {
@@ -96,7 +105,7 @@ public class SrtRepairer {
 			}
 		}
 	}
-	
+
 	private boolean isTenPercentFinished(String line) {
 		int finished = 0;
 		try {
@@ -106,7 +115,7 @@ public class SrtRepairer {
 		}
 		return (finished % 10 == 0) && finished > 0 ;
 	}
-	
+
 	private int getTrackNumberFromOutput(BufferedReader reader) throws IOException{
 		int trackNumber = -1;
 		int currTrackNumber = -1; 
